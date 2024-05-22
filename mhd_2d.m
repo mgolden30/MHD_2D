@@ -1,7 +1,7 @@
-n = 256;
+n = 512;
 
-nu  = 1/100; %fluid viscosity
-eta = 1/100; %magnetic viscosity
+nu  = 1/300; %fluid viscosity
+eta = 1/300; %magnetic viscosity
 
 [x,y] = meshgrid( (0:n-1)/n*2*pi );
 
@@ -16,13 +16,13 @@ forcingB=  0*cos(3*y);
 mean_Bx = 0.0;
 mean_By = 0.1;
 
-M = 512; %number of outputs to save
-dt = 0.005;
+M = 1024; %number of outputs to save
+dt = 0.0025 * 32;
 
 omega   = zeros(n,n,M);
 current = zeros(n,n,M);
 
-draw_every = 16;
+draw_every = 32;
 
 colormap bluewhitered
 
@@ -41,14 +41,34 @@ open(vidObj);
 
 iteration = 1; %index for writing out
 
-for t = 1:M*draw_every
-  t/draw_every %comment this out if you want
+steps = zeros(M,1);
 
-  [om, j] = rk4( om, j, dt, params );
-  if mod(t, draw_every) ~= 0
-    continue;
-  end
+%For ODE45
+fields = zeros(n,n,2);
+fields(:,:,1) = om;
+fields(:,:,2) =  j;
+fields = reshape(fields, [2*n*n, 1] );
 
+for t = 1:M
+  t %comment this out if you want
+
+  %[om, j] = rk4( om, j, dt, params );
+  
+  %Alternatively, use built-in ODE solver
+  vel = @(t,f) velocity_wrapper(f, params, n);
+  [ts, fs]=ode78(vel, [0 dt], fields);
+  
+  fields = fs(end,:);
+  
+  fields2 = reshape(fields, [n,n,2]);
+  om = fields2(:,:,1);
+  j  = fields2(:,:,2);
+
+  %if mod(t, draw_every) ~= 0
+  %  continue;
+  %end
+
+  steps(iteration) = numel(ts);
   omega(:,:,iteration) = om;
   current(:,:,iteration) = j;
   iteration = iteration + 1;  
@@ -64,8 +84,20 @@ end
 % Close the file.
 close(vidObj);
 
-save("mhd_sim.mat", "current", "omega", "dt", "draw_every", "params");
+save("mhd_sim.mat", "current", "omega", "dt", "draw_every", "params", "steps", "-v7.3");
 
+
+function fields = velocity_wrapper( fields, params, n )
+  fields = reshape(fields, [n,n,2]);
+  om = fields(:,:,1);
+  j  = fields(:,:,2);
+
+  [v_om, v_j] = velocity( om,j, params );
+
+  fields(:,:,1) = v_om;
+  fields(:,:,2) = v_j;
+  fields = reshape(fields, [n*n*2,1]);
+end
 
 function   plot_state(om, j, params)
   tiledlayout(1,2);
